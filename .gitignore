@@ -1,0 +1,36 @@
+# ---- Large / raw data: do NOT commit (provide a sample + download instructions instead) ----
+data/raw/
+data/processed/
+*.csv
+!data/sample/*.csv          # but DO keep the small demonstration sample
+*.parquet
+*.zip
+
+# SEC source files (large)
+sub.txt
+num.txt
+tag.txt
+pre.txt
+
+# ---- Power BI working file (large; optional to commit) ----
+*.pbix
+
+# ---- Python ----
+__pycache__/
+*.pyc
+.venv/
+venv/
+.ipynb_checkpoints/
+.env
+
+# ---- OS / editor clutter ----
+.DS_Store
+Thumbs.db
+*~
+.vscode/
+.idea/
+
+# ---- Office temp files ----
+~$*.docx
+~$*.xlsx
+~$*.pptx
