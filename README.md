@@ -124,7 +124,7 @@ aggregation, YoY growth, macro join).
 
 ---
 
-## Limitations (honest)
+## Limitations
 
 - A quarterly **revenue** forecast is not a 13-week **cash-flow** forecast.
 - ~1,600 firm-quarters with zero/negative reported revenue use a seasonal fallback (they
