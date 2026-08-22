@@ -36,6 +36,13 @@ OUTPUT_PATH = (
     / "forecasting_dataset_2021_2025.csv"
 )
 
+AUDIT_OUTPUT_PATH = (
+    PROJECT_ROOT
+    / "data"
+    / "processed"
+    / "forecasting_dataset_2021_2025_timing_audit.csv"
+)
+
 BASELINE_SUMMARY_PATH = (
     PROJECT_ROOT
     / "data"
@@ -446,6 +453,36 @@ def main():
     )
 
     # ------------------------------------------------------------
+    # Forecast-timing audit
+    # ------------------------------------------------------------
+    # A forecast is valid only if the current-quarter filing became
+    # available before the target reporting period ended.
+    modeling_df["filed_date"] = pd.to_datetime(
+        modeling_df["filed_date"],
+        errors="coerce",
+    )
+
+    modeling_df["target_period_date"] = pd.to_datetime(
+        modeling_df["target_period_date"],
+        errors="coerce",
+    )
+
+    missing_filed_dates = modeling_df["filed_date"].isna().sum()
+    missing_target_dates = modeling_df["target_period_date"].isna().sum()
+
+    if missing_filed_dates > 0 or missing_target_dates > 0:
+        raise ValueError(
+            "Forecast-timing check cannot be completed: "
+            f"{missing_filed_dates:,} missing filed_date values and "
+            f"{missing_target_dates:,} missing target_period_date values."
+        )
+
+    modeling_df["forecast_timing_valid"] = (
+        modeling_df["filed_date"]
+        < modeling_df["target_period_date"]
+    )
+
+    # ------------------------------------------------------------
     # Reorder important columns to the front
     # ------------------------------------------------------------
     front_cols = [
@@ -466,6 +503,7 @@ def main():
         "revenue_millions_usd",
         "signed_log_revenue",
         "target_period_date",
+        "forecast_timing_valid",
         "target_calendar_period",
         "target_calendar_year",
         "target_calendar_quarter",
@@ -508,19 +546,84 @@ def main():
 
     modeling_df = modeling_df[front_cols + other_cols]
 
-    # Clean date formatting for CSV output
-    for date_col in ["period_date", "filed_date", "target_period_date"]:
-        if date_col in modeling_df.columns:
-            modeling_df[date_col] = pd.to_datetime(
-                modeling_df[date_col],
-                errors="coerce",
-            ).dt.strftime("%Y-%m-%d")
+    # Preserve every candidate row for audit and exclude timing-invalid
+    # observations only from the sample passed to downstream modeling.
+    audit_df = modeling_df.copy()
+
+    timing_exclusion_summary = (
+        audit_df.groupby("model_split")["forecast_timing_valid"]
+        .agg(
+            original_rows="size",
+            timing_valid_rows="sum",
+        )
+        .reset_index()
+    )
+
+    timing_exclusion_summary["timing_invalid_rows"] = (
+        timing_exclusion_summary["original_rows"]
+        - timing_exclusion_summary["timing_valid_rows"]
+    )
+
+    modeling_df = audit_df.loc[
+        audit_df["forecast_timing_valid"]
+    ].copy()
+
+    expected_original_rows = 51_168
+    expected_final_rows = 48_802
+
+    if len(audit_df) != expected_original_rows:
+        raise ValueError(
+            f"Expected {expected_original_rows:,} audit rows, "
+            f"but found {len(audit_df):,}."
+        )
+
+    if len(modeling_df) != expected_final_rows:
+        raise ValueError(
+            f"Expected {expected_final_rows:,} timing-valid rows, "
+            f"but found {len(modeling_df):,}."
+        )
+
+    expected_split_counts = {
+        "train_2021_2023": 22_559,
+        "validation_2024": 13_319,
+        "test_2025": 12_924,
+    }
+
+    actual_split_counts = (
+        modeling_df["model_split"]
+        .value_counts()
+        .to_dict()
+    )
+
+    if actual_split_counts != expected_split_counts:
+        raise ValueError(
+            "Unexpected timing-valid split counts.\n"
+            f"Expected: {expected_split_counts}\n"
+            f"Actual:   {actual_split_counts}"
+        )
+
+    print("\nForecast-timing exclusion summary:")
+    print(timing_exclusion_summary.to_string(index=False))
+
+    print(f"\nFull audit sample: {len(audit_df):,} rows")
+    print(f"Timing-valid modeling sample: {len(modeling_df):,} rows")
+    print(f"Excluded: {len(audit_df) - len(modeling_df):,} rows")
+
+    # Clean date formatting for both CSV outputs.
+    for output_df in [audit_df, modeling_df]:
+        for date_col in ["period_date", "filed_date", "target_period_date"]:
+            if date_col in output_df.columns:
+                output_df[date_col] = pd.to_datetime(
+                    output_df[date_col],
+                    errors="coerce",
+                ).dt.strftime("%Y-%m-%d")
 
     # ------------------------------------------------------------
     # Save output
     # ------------------------------------------------------------
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
 
+    audit_df.to_csv(AUDIT_OUTPUT_PATH, index=False)
     modeling_df.to_csv(OUTPUT_PATH, index=False)
 
     # ------------------------------------------------------------
@@ -617,6 +720,10 @@ def main():
     print("\n" + "=" * 80)
     print("OUTPUT SAVED")
     print("=" * 80)
+    print("\nTiming audit dataset:")
+    print(AUDIT_OUTPUT_PATH)
+
+    print("\nTiming-valid modeling dataset:")
     print(OUTPUT_PATH)
 
     print("\nBaseline summary saved:")

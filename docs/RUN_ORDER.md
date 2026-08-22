@@ -36,8 +36,9 @@ to default the page to the defended 15.
 ## Optional (in `scripts/optional/`, report use only)
 
 - `optional/11_train_sec_only_models_REPORT.py` — SEC-only benchmark models.
-- `optional/18_macro_revenue_relationship_regression.py` — evidence that macro
-  variables are weak on their own (needs `statsmodels`).
+- `optional/18_macro_revenue_relationship_regression.py` — exploratory macro-revenue
+  association analysis; not used for statistical inference or final model selection
+  (needs `statsmodels`).
 - `optional/20_compare_actual_original_new_forecast.py` — actual vs YOY vs
   adjusted comparison table/chart. Superseded for delivery by Script 21.
 

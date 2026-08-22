@@ -17,15 +17,27 @@ test year.*
 
 ---
 
+
 ## Headline results (held-out 2025 test set)
 
-| Metric | Result |
-| --- | --- |
-| Mean absolute error (MAE) | **$147M** (vs $184M seasonal baseline — ~20% better) |
-| Typical forecast error (median) | **~8%** |
-| Forecasts within ±10% of actual | **~61%** |
-| Impossible negative forecasts | **0** (vs 64 in the baseline) |
-| Companies analyzed | **3,500+** |
+| Metric                             | Result                                 |
+| ---------------------------------- | -------------------------------------- |
+| Mean absolute error (MAE)          | **$153.4M**                            |
+| Seasonal baseline MAE              | **$191.9M**                            |
+| MAE reduction vs seasonal baseline | **20.1%**                              |
+| Median absolute percentage error   | **7.3%**                               |
+| sMAPE                              | **18.2%**                              |
+| Forecasts within ±5% of actual     | **38.4%**                              |
+| Forecasts within ±10% of actual    | **58.8%**                              |
+| Forecasts within ±20% of actual    | **76.7%**                              |
+| Negative forecasts                 | **0** (vs 64 in the seasonal baseline) |
+| Test observations                  | **12,924**                             |
+| Test firms                         | **3,586**                              |
+
+> **Interpretation:** Forecast errors are highly skewed because a small number of very large firms can generate large dollar errors. The final model achieves a median absolute percentage error of **7.3%** and an MAE of **$153.4M**, representing a **20.1% reduction in MAE** compared with the seasonal baseline. Median APE, sMAPE, and within-range accuracy rates are calculated only for observations with positive actual revenue.
+
+---
+
 
 > Honest note: dollar error (MAE) is concentrated in a small number of very large,
 > volatile firms (e.g. Dell, NVIDIA). The *typical* company is forecast within ~8%;

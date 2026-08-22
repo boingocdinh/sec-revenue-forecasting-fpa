@@ -12,6 +12,9 @@ num.txt
 tag.txt
 pre.txt
 
+# Generated trained model artifacts
+/models/*.pkl
+
 # ---- Power BI working file (large; optional to commit) ----
 *.pbix
 
