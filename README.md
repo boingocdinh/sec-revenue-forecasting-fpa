@@ -1,10 +1,23 @@
-# Revenue Forecasting & Variance Analysis
+# Next-Quarter Revenue Forecasting for U.S. Public Companies
 
-Forecasting next-quarter revenue for 3,500+ U.S. public companies using SEC financial
-filings and macroeconomic data — then framing the results for FP&A-style variance review.
+An end-to-end forecasting and FP&A analytics project that uses SEC financial filings,
+macroeconomic indicators, and a Random Forest model to estimate next-quarter revenue for
+U.S. public companies.
 
-An end-to-end project spanning **Python, SQL, Power BI, and machine learning**, built to
-mirror how a finance team actually forecasts revenue and reviews the variance.
+The project covers data extraction, fiscal-Q4 derivation, timing validation, feature
+engineering, model evaluation, sensitivity testing, Excel variance analysis, and Power BI
+company-level review.
+
+---
+
+## Business question
+
+Can historical SEC revenue, company information, and a small group of economic indicators
+forecast next-quarter revenue more accurately than simple rules such as repeating revenue
+from the same quarter last year?
+
+The final model is designed as a consistent starting point for FP&A review, budgeting,
+resource planning, and variance analysis. It is not intended to replace business judgment.
 
 ---
 
@@ -12,69 +25,153 @@ mirror how a finance team actually forecasts revenue and reviews the variance.
 
 ![Revenue Forecast Dashboard](images/dashboard.png)
 
-*Power BI dashboard: forecast accuracy, variance, and error-by-industry across the 2025
-test year.*
+*Power BI supports company and quarter selection, forecast-versus-actual comparison, and
+absolute percentage error review. Company examples are illustrative; the headline metrics
+come from the complete held-out 2025 test set.*
 
 ---
 
+## Final results: held-out 2025 test set
 
-## Headline results (held-out 2025 test set)
+The final test contains **12,924 firm-quarter observations from 3,586 firms**. The model
+was trained on earlier years, tuned on 2024, and evaluated on 2025 only after model
+selection was complete.
 
-| Metric                             | Result                                 |
-| ---------------------------------- | -------------------------------------- |
-| Mean absolute error (MAE)          | **$153.4M**                            |
-| Seasonal baseline MAE              | **$191.9M**                            |
-| MAE reduction vs seasonal baseline | **20.1%**                              |
-| Median absolute percentage error   | **7.3%**                               |
-| sMAPE                              | **18.2%**                              |
-| Forecasts within ±5% of actual     | **38.4%**                              |
-| Forecasts within ±10% of actual    | **58.8%**                              |
-| Forecasts within ±20% of actual    | **76.7%**                              |
-| Negative forecasts                 | **0** (vs 64 in the seasonal baseline) |
-| Test observations                  | **12,924**                             |
-| Test firms                         | **3,586**                              |
+| Metric | Seasonal baseline | Last-quarter baseline | Final Random Forest |
+| --- | ---: | ---: | ---: |
+| MAE | $191.94M | $171.85M | **$153.36M** |
+| RMSE | $1,182.73M | Not reported | **$1,018.51M** |
+| Median absolute percentage error | 10.63% | Not reported | **7.31%** |
+| sMAPE | 25.1% | Not reported | **18.2%** |
+| Forecasts within ±10% of actual | 47.80% | Not reported | **58.78%** |
+| Forecasts within ±20% of actual | 70.62% | Not reported | **76.70%** |
+| Negative forecasts | 64 | 54 | **0** |
 
-> **Interpretation:** Forecast errors are highly skewed because a small number of very large firms can generate large dollar errors. The final model achieves a median absolute percentage error of **7.3%** and an MAE of **$153.4M**, representing a **20.1% reduction in MAE** compared with the seasonal baseline. Median APE, sMAPE, and within-range accuracy rates are calculated only for observations with positive actual revenue.
+### Headline finding
 
----
+The final log-growth Random Forest reduced 2025 MAE by **20.10%** compared with the
+seasonal baseline and produced no negative forecasts.
 
-
-> Honest note: dollar error (MAE) is concentrated in a small number of very large,
-> volatile firms (e.g. Dell, NVIDIA). The *typical* company is forecast within ~8%;
-> the average is pulled up by a few mega-cap outliers (the ~18% mean error reflects these outliers). Both views are reported.
-
----
-
-## What the project does
-
-1. **Extracts** quarterly revenue for thousands of public companies from raw SEC
-   Financial Statement Data Sets (2021–2025), using a priority-based revenue-tag rule
-   and deduplication to one clean value per company-quarter.
-2. **Derives** missing Q4 revenue (annual − Q1–Q3) where companies don't report it
-   directly, with each derived row flagged.
-3. **Engineers** firm-level features (revenue lags, year-over-year and quarter-over-
-   quarter growth, seasonality, volatility, sector) and joins FRED macroeconomic
-   indicators (CPI, fed funds rate, unemployment).
-4. **Forecasts** next-quarter revenue with a **log-growth model** — predicting
-   `log(next_revenue / current_revenue)` and reconstructing the dollar forecast as
-   `current_revenue × exp(prediction)`, which is mathematically non-negative.
-5. **Reports** the results as FP&A artifacts: an Excel variance workbook, a Power BI
-   forecast-accuracy dashboard, and a SQL data layer.
+MAE and RMSE are influenced by a small number of very large, volatile firms. Median APE,
+sMAPE, and within-range measures provide a complementary view across companies of
+different sizes. Percentage-based metrics use only observations with positive actual
+revenue.
 
 ---
 
-## Why log-growth (the key modeling decision)
+## Data pipeline and timing control
 
-The first machine-learning model corrected a seasonal baseline on the raw-dollar scale.
-It lowered dollar error but produced **1,836 impossible negative revenue forecasts** and
-over-focused on the largest firms.
+The pipeline converts raw SEC filings into a timing-valid forecasting panel:
 
-Reformulating into **log-growth space** fixed this: forecasts became non-negative by
-construction, accuracy spread proportionally across firm sizes, and the model improved on
-the seasonal baseline across MAE, sMAPE, and percentage error — while eliminating every
-impossible forecast. A naive "same as last quarter" forecast remains hard to beat on
-percentage error alone, which reflects how persistent quarterly revenue is; the model's
-clear edge is dollar-weighted accuracy and economically sensible output.
+| Stage | Observations | Description |
+| --- | ---: | --- |
+| Direct SEC revenue panel | 67,094 | Firm-quarter revenue reported directly in SEC filings |
+| Panel after fiscal-Q4 derivation | 84,108 | Adds Q4 when annual revenue and Q1-Q3 are available |
+| Candidate modeling rows | 51,168 | Creates next-quarter targets and model features |
+| Final timing-valid sample | **48,802** | Excludes 2,366 rows that failed the timing rule |
+
+The final sample covers **4,528 firms** and contains no duplicate company-period rows or
+missing targets.
+
+The timing rule requires:
+
+```text
+filed_date < target_period_end_date
+```
+
+This prevents the model from using a filing that became available only after the target
+quarter had already ended.
+
+### Chronological split
+
+| Split | Target period | Observations | Firms |
+| --- | --- | ---: | ---: |
+| Training | 2022Q2-2023Q4 | 22,559 | 4,068 |
+| Validation | 2024Q1-2024Q4 | 13,319 | 3,714 |
+| Test | 2025Q1-2025Q4 | 12,924 | 3,586 |
+
+---
+
+## Modeling approach
+
+The final model predicts proportional revenue movement rather than revenue dollars
+directly:
+
+```text
+log_growth = log(next_quarter_revenue / current_quarter_revenue)
+forecast = current_quarter_revenue × exp(predicted_log_growth)
+```
+
+This scale allows one model to learn from both small and large companies.
+
+### Final model configuration
+
+- Model: `RandomForestRegressor`
+- Target: next-quarter log revenue growth
+- Features: 22 total
+  - 7 revenue-history features
+  - 6 macroeconomic features
+  - 9 sector indicators
+- Trees: 500
+- Minimum samples per leaf: 20
+- Random state: 0
+- Fallback: seasonal forecast when current revenue is zero or negative
+- Final safeguard: clip any remaining negative forecast to zero
+
+The macroeconomic features are based on inflation, the federal funds rate,
+unemployment, and their quarterly changes.
+
+---
+
+## Derived fiscal-Q4 sensitivity
+
+Some annual filings report full-year revenue without a separate fourth-quarter value. In
+those cases, fiscal Q4 is derived as:
+
+```text
+fiscal_Q4 = annual_revenue - Q1 - Q2 - Q3
+```
+
+Derived-Q4 observations account for **2,709 of 12,924 test rows, or 20.96%** of the 2025
+test set.
+
+| Current-quarter revenue source | Test rows | Final-model MAE | Improvement vs seasonal |
+| --- | ---: | ---: | ---: |
+| Directly reported SEC revenue | 10,215 | **$140.90M** | **27.38% better** |
+| Derived fiscal Q4 | 2,709 | **$200.36M** | **8.83% worse** |
+
+The overall improvement is therefore not uniform. Derived fiscal Q4 remains the clearest
+weakness and should be flagged for review. A production workflow should consider a
+Q4-specific model, seasonal override, or ensemble.
+
+---
+
+## Macro-feature ablation
+
+A controlled ablation compared two models using the same training rows, test rows,
+Random Forest settings, and fallback rule. The only difference was whether the six macro
+features were included.
+
+| Model version | MAE | Median APE | sMAPE | RMSE |
+| --- | ---: | ---: | ---: | ---: |
+| With macro features | **$153.36M** | **7.31%** | **18.2%** | $1,018.51M |
+| Without macro features | $154.88M | 7.56% | 18.4% | **$1,007.50M** |
+
+Macro features improved MAE by only **0.98%** and slightly improved typical percentage
+errors, but they did not reduce the largest misses. Company-specific revenue history
+remained the main forecasting signal.
+
+---
+
+## FP&A deliverables
+
+- **Power BI dashboard:** full-test summary and company-level forecast review
+- **Excel variance workbook:** forecast-versus-actual analysis and official metrics
+- **Academic report:** data, methodology, safeguards, findings, and limitations
+- **Presentation:** business question, pipeline, model results, sensitivity tests, and
+  Power BI example
+- **Model outputs:** final 2025 predictions, evaluation metrics, Q4 sensitivity results,
+  and macro-ablation results
 
 ---
 
@@ -82,74 +179,107 @@ clear edge is dollar-weighted accuracy and economically sensible output.
 
 | Tool | Use |
 | --- | --- |
-| **Python** (pandas, scikit-learn) | data pipeline, feature engineering, modeling |
-| **SQL** (MySQL) | cleaning, deduplication, aggregation, YoY growth, macro join |
-| **Power BI** | forecast-accuracy & variance dashboard |
-| **Excel** | budget-vs-actual variance workbook |
+| Python: pandas, NumPy, scikit-learn | Data preparation, feature engineering, modeling, and evaluation |
+| SQL: MySQL | Cleaning, deduplication, aggregation, growth calculations, and macro joins |
+| Power BI | Interactive company-level forecast and variance review |
+| Excel | FP&A-style variance analysis and metric reporting |
+| SEC Financial Statement Data Sets | Company financial-statement data |
+| FRED | CPI, federal funds rate, and unemployment data |
 
 ---
 
 ## Repository structure
 
-```
+```text
 .
 ├── README.md
 ├── scripts/
-│   └── improved_revenue_forecast.py        # final log-growth model (runs on full data)
+│   └── improved_revenue_forecast.py
 ├── sql/
-│   └── revenue_forecasting_queries.sql     # MySQL data layer (load, clean, aggregate, YoY)
+│   └── revenue_forecasting_queries.sql
 ├── data/
 │   └── sample/
-│       └── sample_revenue_panel.csv        # 24-company demo sample (see note below)
+│       └── sample_revenue_panel.csv
 ├── outputs/
 │   ├── Revenue_Forecast_Variance_Analysis.xlsx
-│   ├── powerbi_forecast_data.csv
-│   ├── powerbi_accuracy_bands.csv
-│   └── improved_predictions_test_2025.csv
+│   ├── log_growth_random_forest_metrics.csv
+│   ├── log_growth_random_forest_predictions_test_2025.csv
+│   ├── derived_q4_counts_by_split.csv
+│   ├── derived_q4_sensitivity_test_2025.csv
+│   └── powerbi/
+│       ├── powerbi_forecast_data.csv
+│       └── powerbi_model_metrics.csv
 ├── reports/
-│   ├── Capstone_Academic_Report.docx       # full academic report
-│   └── FPA_Business_Report.docx            # FP&A leadership briefing
+│   └── NgocDinh_MSDS_Capstone_Report_Final_REVISED.docx
+├── presentations/
+│   └── NgocDinh_MSDS_Capstone_Presentation_FINAL_REVISED.pptx
 └── images/
     └── dashboard.png
 ```
+
+The tree highlights the principal deliverables rather than every intermediate audit or
+development file.
 
 ---
 
 ## How to run
 
-**The model** (`scripts/improved_revenue_forecast.py`):
+### Python model
+
 ```bash
-python scripts/improved_revenue_forecast.py --data data/processed/model_ready_sec_macro_2021_2025.csv
+python scripts/improved_revenue_forecast.py \
+  --data data/processed/model_ready_sec_macro_2021_2025.csv
 ```
-Trains on 2021–2023, selects hyperparameters on 2024, reports final results on 2025, and
-writes `improved_predictions_test_2025.csv`.
 
-**The SQL** (`sql/revenue_forecasting_queries.sql`): open in MySQL Workbench, run Section 1
-to create the table, import the data, then run the queries (filtering, deduplication,
-aggregation, YoY growth, macro join).
+The script trains on the historical training period, uses 2024 for model selection,
+evaluates the final model on 2025, and writes the prediction and metric outputs.
 
-> **Data note:** the full ~51,000-row modeling panel is not committed to this repo (large
-> file). A 24-company **demonstration sample** (`data/sample/sample_revenue_panel.csv`) is
-> included so the SQL runs against real-shaped data. The sample is for demonstration only —
-> it does **not** reproduce the headline results, which come from the full panel. SEC
-> Financial Statement Data Sets and FRED series are publicly available for the full run.
+### SQL workflow
+
+Open `sql/revenue_forecasting_queries.sql` in MySQL Workbench. Create the table, import
+the source data, and run the cleaning, deduplication, aggregation, growth, and macro-join
+queries in order.
+
+### Data note
+
+The full **48,802-row timing-valid modeling panel** is not committed to this repository.
+The demonstration sample in `data/sample/` is included so the repository structure and
+SQL workflow can be reviewed without publishing the full processed dataset. The sample
+does not reproduce the official results.
 
 ---
 
 ## Limitations
 
-- A quarterly **revenue** forecast is not a 13-week **cash-flow** forecast.
-- ~1,600 firm-quarters with zero/negative reported revenue use a seasonal fallback (they
-  can't be modeled in log space) — they are flagged, not deleted.
-- Macroeconomic variables are weak standalone predictors; firm history dominates.
-- Derived Q4 revenue can introduce noise.
-- Dollar error is dominated by a few mega-cap firms.
-- The model is **more production-ready, not perfect**, and would require monitoring in use.
+- This is a timing-screened historical evaluation, not a complete real-time backtest
+  rebuilt from one fixed forecasting date.
+- Filing availability was screened, but forecast lead times vary across observations.
+- FRED series may contain later revisions rather than the exact historical data vintage
+  available at each forecast date.
+- Derived fiscal Q4 introduces additional measurement and period-alignment risk.
+- Rows with zero or negative current revenue require a seasonal fallback because log
+  growth cannot be calculated normally.
+- Dollar-error measures are influenced by the largest firms.
+- Quarterly revenue forecasting is not the same as a 13-week cash-flow forecast.
+- Power BI company examples illustrate the review process; they do not replace the full
+  test-set evaluation.
 
 ---
 
-## Reports
+## Conclusion and future work
 
-Two write-ups accompany the code: a full **academic capstone report** (methodology,
-results, limitations) and an **FP&A business briefing** (what leadership should trust and
-do). Both are in `reports/`.
+The project answers the research question with a **qualified yes**. The final Random
+Forest improved overall 2025 accuracy, produced economically sensible non-negative
+forecasts, and supported company-level review through Power BI. However, performance was
+not consistent across every reporting situation.
+
+Future work should:
+
+1. Test a Q4-specific model, seasonal override, or ensemble.
+2. Rebuild the data from fixed forecast-origin dates using point-in-time data vintages.
+3. Add prediction intervals around each forecast.
+4. Evaluate industry-specific models.
+5. Explore richer company information such as management guidance and filing text.
+
+The final model should be viewed as a useful starting point for review rather than a
+replacement for business judgment.
